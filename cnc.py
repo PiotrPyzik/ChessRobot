@@ -23,9 +23,9 @@ def sendGcode(cmd):
                 break
 
 def chessNotationToMatrix(field):
-    letters = {'a':0, 'b':1, 'c':2, 'd':3, 'e':4, 'f':5, 'g':6, 'h':7}
+    letters = {'a':0, 'b':1, 'c':2, 'd':3, 'e':4, 'f':5, 'g':6, 'h':7, 'i':-1.8}
     y = int(field[1])-1#cyfra z np. a1
-    x = int(letters[field[0]])#litera z a1
+    x = letters[field[0]]#litera z a1
     return([x,y])
 
 
@@ -99,8 +99,10 @@ def removePiece(piece, field):
     height = distance_from_board-piece_height[piece]
     moveToField(field)
     catchPiece(height)
-    sendGcode(f"G1 X{-field_size}")
+    sendGcode(f"G1 X{-3*field_size}")
     releasePiece(0)
+    sendGcode(f"G0 X{-2.5*field_size}")
+    sendGcode(f"G0 X{-3*field_size}")
     
 ser = connectToArduino()
 GRBLSetup()
