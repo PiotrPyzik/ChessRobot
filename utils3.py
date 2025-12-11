@@ -1,11 +1,12 @@
 import cv2 as cv
 import numpy as np
 import chess
-
+import matplotlib.pyplot as plt
+from skimage.metrics import structural_similarity
 
 class Field:
     def __init__(self, index):
-        self.index = index  # (row, col)
+        self.index = index
         self.x_pos = 0
         self.y_pos = 0
         self.a = 0
@@ -13,94 +14,70 @@ class Field:
         self.prev_img = None
         self.img = None
         self.now_value = 0.0
+        self.just_color = 0.0
         self.offset = 5
+        self.diff_img = None
     
     def __str__(self):
         return(str(int(self.now_value*100)))
     
     def setValue(self, t=1.5):
-        from skimage.metrics import structural_similarity
-        from skimage import color
-        # if self.prev_img is not None and self.img is not None:
-        #     lab1 = cv.cvtColor(self.prev_img, cv.COLOR_BGR2Lab)
-        #     lab2 = cv.cvtColor(self.img, cv.COLOR_BGR2Lab)
-        #     diff_map = np.linalg.norm(lab1.astype(np.float32) - lab2.astype(np.float32), axis=2)
-        #     self.now_value = float(np.mean(diff_map))
-        # else:
-        #     self.now_value = 0.0
-        # self.prev_img = self.img.copy() if self.img is not None else None
-
-            #----------------------
-            # if score < 0.7:
-            #     diff = (diff * 255).astype("uint8")
-
-            #     # Threshold the difference image, followed by finding contours to
-            #     # obtain the regions that differ between the two images
-            #     thresh = cv.threshold(diff, 0, 255, cv.THRESH_BINARY_INV | cv.THRESH_OTSU)[1]
-            #     contours = cv.findContours(thresh, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-            #     contours = contours[0] if len(contours) == 2 else contours[1]
-
-            #     # Highlight differences
-            #     mask = np.zeros(first.shape, dtype='uint8')
-            #     filled = second.copy()
-
-            #     for c in contours:
-            #         area = cv.contourArea(c)
-            #         if area > 100:
-            #             x,y,w,h = cv.boundingRect(c)
-            #             cv.rectangle(first, (x, y), (x + w, y + h), (36,255,12), 2)
-            #             cv.rectangle(second, (x, y), (x + w, y + h), (36,255,12), 2)
-            #             cv.drawContours(mask, [c], 0, (0,255,0), -1)
-            #             cv.drawContours(filled, [c], 0, (0,255,0), -1)
-
-            #     cv.imshow('first', first)
-            #     cv.imshow('second', second)
-            #     cv.imshow('diff', diff)
-            #     cv.imshow('mask', mask)
-            #     cv.imshow('filled', filled)
-            #     cv.waitKey()
-        
         if self.prev_img is not None and self.img is not None:
             first = self.img
             second = self.prev_img
+            
+            # Konwersja do skali szarości dla SSIM
             first_gray = cv.cvtColor(first, cv.COLOR_BGR2GRAY)
             second_gray = cv.cvtColor(second, cv.COLOR_BGR2GRAY)
-            score, diff = structural_similarity(first_gray, second_gray, full=True)
-            # --- Convert to Lab color space for perceptual difference ---
             
-            lab_prev = cv.cvtColor(self.prev_img, cv.COLOR_BGR2Lab)
-            lab_curr = cv.cvtColor(self.img, cv.COLOR_BGR2Lab)
+            # Obliczanie SSIM (full=True zwraca mapę podobieństwa)
+            score, ssim_diff = structural_similarity(first_gray, second_gray, full=True)
+            
+            # --- TWORZENIE WIZUALNEJ MAPY RÓŻNIC ---
+            # ssim_diff: 1.0 to identyczne, -1.0 to odwrotne.
+            # Odwracamy, aby różnice były jasne (bliskie 1.0)
+            self.diff_img = ((1.0 - ssim_diff) * 255).astype("uint8")
+            
+            # --- OBLICZENIA LAB (KOLOR) ---
+            lab_prev = cv.cvtColor(self.prev_img, cv.COLOR_BGR2Lab).astype(np.float32)
+            lab_curr = cv.cvtColor(self.img, cv.COLOR_BGR2Lab).astype(np.float32)
 
-            # Convert to float for safe math
-            lab_prev = lab_prev.astype(np.float32)
-            lab_curr = lab_curr.astype(np.float32)
-
-            # Separate channels
+            # Rozdzielenie kanałów
             L1, a1, b1 = cv.split(lab_prev)
             L2, a2, b2 = cv.split(lab_curr)
 
-            # --- Compute per-channel differences ---
+            # Różnice per kanał
             dL = L1 - L2
             da = a1 - a2
             db = b1 - b2
+            
+            # Wzmocnienie różnic koloru (parametr t)
             diff_map = np.sqrt(dL**2 + (t * da)**2 + (t * db)**2)
-            ratio = float(np.mean(diff_map) / 255.0)/abs(1-score)
-            self.now_value = ((float(np.mean(diff_map) / 255.0)*1/ratio)+abs(1-score))/2
+            
+            # --- FUZJA WYNIKÓW ---
+            # just_color - czysta różnica kolorystyczna
+            self.just_color = float(np.mean(diff_map) / 255.0)
+            
+            # now_value - hybryda: SSIM koryguje wynik koloru
+            # ratio pomaga znormalizować wynik względem zmian strukturalnych
+            ratio = self.just_color / (abs(1 - score) + 1e-6) # +1e-6 zabezpiecza przed dzieleniem przez 0
+            
+            self.now_value = ((self.just_color * (1/ratio)) + abs(1-score)) / 2
 
         else:
             self.now_value = 0.0
+            self.just_color = 0.0
+            self.diff_img = None
 
-        # Update previous frame
+        # Aktualizacja poprzedniej klatki
         self.prev_img = self.img.copy() if self.img is not None else None
-
-        
 
     def getChessNotation(self):
         letters = {0:'a', 1:'b', 2:'c', 3:'d', 4:'e', 5:'f', 6:'g', 7:'h'}
         return letters[self.index[1]] + str(self.index[0] + 1)
 
     def outlineField(self, img):
-        """Draw a rectangle around the field."""
+        """Rysuje prostokąt wokół pola."""
         return cv.rectangle(
             img,
             (self.y_pos + self.offset, self.x_pos + self.offset),
@@ -114,9 +91,10 @@ def setupBorders(cap):
     mt, ml, size = 0, 0, 500
     while True:
         ret, frame = cap.read()
+        if not ret: continue
         frame_copy = frame.copy()
         frame_copy = cv.rectangle(frame_copy, (ml, mt), (ml+size, mt+size), (0, 255, 0), 1)
-        cv.imshow('Setup Board Borders', frame_copy)
+        cv.imshow('Setup Board Borders (WASD + LK to resize, Q to confirm)', frame_copy)
         key = cv.waitKey(1) & 0xFF
         if keyboard.is_pressed('w'): mt -= 1
         elif keyboard.is_pressed('s'): mt += 1
@@ -124,83 +102,112 @@ def setupBorders(cap):
         elif keyboard.is_pressed('d'): ml += 1
         if keyboard.is_pressed('l'): size += 1
         elif keyboard.is_pressed('k'): size -= 1
-        if key == ord('q'):  # Done
+        if key == ord('q'):
             offset = [mt, mt+size, ml, ml+size]
             cv.destroyAllWindows()
             return offset
-        
 
 def cropImage(frame, offset):
     return frame[offset[0]:offset[1], offset[2]:offset[3]]
 
-
 def findTwoBiggest(board):
     first = (-float("inf"), -1, -1)
     second = (-float("inf"), -1, -1)
-    board_table = [[0 for i in range(8)] for j in range(8)]
+    
+    # Do debugowania Castle (średnia wartość planszy)
+    total_val = 0
+    count = 0
+
     for x, row in enumerate(board):
         for y, cell in enumerate(row):
             val = cell.now_value
-            board_table[y][x] = int(cell.now_value)
+            total_val += val
+            count += 1
+            
             if val > first[0]:
                 second = first
                 first = (val, x, y)
             elif val > second[0] and (x, y) != (first[1], first[2]):
                 second = (val, x, y)
 
-    # print("------test---------------------------")
-    # find_four_biggest(board)
-    # print("--------/test-------------------------")
-    return [(first[1], first[2]), (second[1], second[2])], (first[0]+second[0])/2
+    avg_field_value = total_val / count if count > 0 else 0
+    return [(first[1], first[2]), (second[1], second[2])], avg_field_value
 
-
-# def find_four_biggest(board):
-#     top = [(-float("inf"), -1, -1)] * 4
-#     board_table = [[0 for _ in range(8)] for _ in range(8)]
-#     avg = 0
-#     for x, row in enumerate(board):
-#         for y, cell in enumerate(row):
-#             val = cell.now_value
-#             avg += int(val*100)
-#             board_table[y][x] = int(val * 100)
-
-#             # Insert this value into the correct place in `top`
-#             if val > top[-1][0]:
-#                 top.append((val, x, y))
-#                 top.sort(reverse=True, key=lambda t: t[0])
-#                 top = top[:5]  # keep only top 4
-#     for i in range(0,4):
-#         diff = int((top[i][0]-top[i+1][0])*100)
-#         print(diff,"\n----\n")
+def checkForCastle(game_board, board_matrix, avg_val):
+    # Prosta heurystyka sprawdzająca roszadę na podstawie zmian na polach tranzytowych
+    # Wartość 0.7*avg to próg eksperymentalny
     
-#     print(board_table)
-#     print(top)
+    # Sprawdzamy czy ewentualne pola roszady są puste w logice gry
+    # Białe Długa (c1, d1 puste)
+    if not game_board.piece_at(chess.parse_square('b1')) and \
+       not game_board.piece_at(chess.parse_square('c1')) and \
+       not game_board.piece_at(chess.parse_square('d1')):
+        # Sprawdzamy zmianę wizualną na c1 (indeks [0][2]) i d1 (indeks [0][3])
+        # Uwaga: indeksy board_matrix[y][x] vs szachowe
+        # Zakładam że board_matrix[row][col] -> row 0 to linia 1
+        c1_val = board_matrix[0][2].now_value
+        d1_val = board_matrix[0][3].now_value
+        if c1_val + d1_val / 2 >= 0.7 * avg_val:
+            return 2 # Long castle
 
-def checkForCastle(board, board_table, avg):
-    print(board_table[0][5].now_value, board_table[7][5].now_value)
-    if not board.piece_at(chess.parse_square('b1')) and not board.piece_at(chess.parse_square('c1')) and not board.piece_at(chess.parse_square('d1')):
-        if board_table[2][0].now_value+board_table[3][0].now_value/2>=0.7*avg:
-            return(2)#long castle
-    if not board.piece_at(chess.parse_square('f1')) and not board.piece_at(chess.parse_square('g1')):
-        if board_table[5][0].now_value+board_table[6][0].now_value/2>=0.7*avg:
-            return(1)#short castle
-        print("dupako")
-    return(0)#no castle
+    # Białe Krótka (f1, g1 puste)
+    if not game_board.piece_at(chess.parse_square('f1')) and \
+       not game_board.piece_at(chess.parse_square('g1')):
+        f1_val = board_matrix[0][5].now_value
+        g1_val = board_matrix[0][6].now_value
+        if f1_val + g1_val / 2 >= 0.7 * avg_val:
+            return 1 # Short castle
+            
+    return 0
 
 def whatMoveWasMade(f1, f2, board, castle):
     f1_not = f1.chess_notation
     f2_not = f2.chess_notation
     p1 = board.piece_at(chess.parse_square(f1_not))
-    p2 = board.piece_at(chess.parse_square(f2_not))
-    if castle == 1:
-        return("e1g1")
-    if castle == 2:
-        return("e1c1")
+    
+    if castle == 1: return "e1g1"
+    if castle == 2: return "e1c1"
+    
+    # Standardowe wykrywanie: jeśli na polu startowym jest figura tego gracza -> to jest from
     if p1:
         if board.turn == chess.WHITE:
             return f1_not + f2_not if str(p1).isupper() else f2_not + f1_not
         else:
             return f1_not + f2_not if str(p1).islower() else f2_not + f1_not
     else:
+        # Fallback
         return f2_not + f1_not
-    
+
+def plot_debug_graphs(board):
+    """Generuje wykresy (Heatmapy) dla diagnostyki."""
+    matrix_now_value = np.zeros((8, 8))
+    matrix_just_color = np.zeros((8, 8))
+
+    for x, row in enumerate(board):
+        for y, field in enumerate(row):
+            # Zamiana indeksów [y, x] aby pasowało do wizualizacji plt.imshow
+            # (zależy od orientacji kamery, tutaj zakładam standard)
+            matrix_now_value[y, x] = field.now_value
+            matrix_just_color[y, x] = field.just_color
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+
+    # Wykres 1: Hybryda
+    im1 = axes[0].imshow(matrix_now_value, cmap='viridis', vmin=0, vmax=1)
+    axes[0].set_title('NOW_VALUE (Color + SSIM)')
+    fig.colorbar(im1, ax=axes[0])
+    for i in range(8):
+        for j in range(8):
+            axes[0].text(j, i, f"{matrix_now_value[i, j]:.2f}", ha="center", va="center", color="w", fontsize=7)
+
+    # Wykres 2: Tylko Kolor
+    im2 = axes[1].imshow(matrix_just_color, cmap='plasma', vmin=0, vmax=1)
+    axes[1].set_title('JUST_COLOR (Lab Diff Only)')
+    fig.colorbar(im2, ax=axes[1])
+    for i in range(8):
+        for j in range(8):
+            axes[1].text(j, i, f"{matrix_just_color[i, j]:.2f}", ha="center", va="center", color="w", fontsize=7)
+
+    plt.tight_layout()
+    print("Wyświetlam wykresy. Zamknij okno wykresu aby kontynuować...")
+    plt.show()

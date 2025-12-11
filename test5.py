@@ -2,7 +2,7 @@ import cv2 as cv
 import chess
 import chess.engine
 import keyboard
-from utils3 import Field, setupBorders, cropImage, findTwoBiggest, whatMoveWasMade, checkForCastle
+from utils3 import Field, setupBorders, cropImage, findTwoBiggest, whatMoveWasMade, checkForCastle, plot_debug_graphs # Pamiętaj o imporcie
 import cnc
 
 
@@ -77,7 +77,8 @@ def main():
             # frame_after = cv.flip(capture_board_frame(cap, offset), 0)
             # frame_after = cv.flip(capture_board_frame(cap, offset), 1)
             update_board_images(board, frame_after)
-
+            
+            plot_debug_graphs(board)
             # Find changed fields
             coords, avg_field_value = findTwoBiggest(board)
             f1 = board[coords[0][0]][coords[0][1]]

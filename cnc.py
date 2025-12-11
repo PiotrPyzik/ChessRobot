@@ -58,6 +58,16 @@ def goToCamera():
 
 def GRBLSetup():
     sendGcode(f"G90")
+    #endstop/homing
+    sendGcode(f"$5=0")#no
+    sendGcode(f"$20=1")#soft limit
+    sendGcode(f"$22=1")#enable homing cycle
+    sendGcode(f"$23=3")#homing direction
+    sendGcode(f"$24=25")
+    sendGcode(f"$25=300")
+    sendGcode(f"$27=0.500")
+    sendGcode(f"$h")
+    #--------------------------
     sendGcode(f"$100=105")#x
     sendGcode(f"$101=50")#y
     sendGcode(f"$102=480")#z
@@ -65,9 +75,9 @@ def GRBLSetup():
     sendGcode(f"$120=100")
     sendGcode(f"$121=100")
     sendGcode(f"$122=100")
-    sendGcode(f'G10 P0 L20 X0')
-    sendGcode(f'G10 P0 L20 Y0')
-    sendGcode(f'G10 P0 L20 Z0')
+    sendGcode(f'G10 P0 L20 X-7.778')
+    sendGcode(f'G10 P0 L20 Y-10.773')
+    sendGcode(f'G10 P0 L20 Z9')
     sendGcode(f"g1 f200")#set feedrate
     print("udało się?")
 
