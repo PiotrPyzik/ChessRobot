@@ -26,41 +26,29 @@ class Field:
             first = self.img
             second = self.prev_img
             
-            # Konwersja do skali szarości dla SSIM
             first_gray = cv.cvtColor(first, cv.COLOR_BGR2GRAY)
             second_gray = cv.cvtColor(second, cv.COLOR_BGR2GRAY)
             
-            # Obliczanie SSIM (full=True zwraca mapę podobieństwa)
             score, ssim_diff = structural_similarity(first_gray, second_gray, full=True)
             
-            # --- TWORZENIE WIZUALNEJ MAPY RÓŻNIC ---
-            # ssim_diff: 1.0 to identyczne, -1.0 to odwrotne.
-            # Odwracamy, aby różnice były jasne (bliskie 1.0)
             self.diff_img = ((1.0 - ssim_diff) * 255).astype("uint8")
             
-            # --- OBLICZENIA LAB (KOLOR) ---
             lab_prev = cv.cvtColor(self.prev_img, cv.COLOR_BGR2Lab).astype(np.float32)
             lab_curr = cv.cvtColor(self.img, cv.COLOR_BGR2Lab).astype(np.float32)
 
-            # Rozdzielenie kanałów
             L1, a1, b1 = cv.split(lab_prev)
             L2, a2, b2 = cv.split(lab_curr)
 
-            # Różnice per kanał
             dL = L1 - L2
             da = a1 - a2
             db = b1 - b2
             
-            # Wzmocnienie różnic koloru (parametr t)
+
             diff_map = np.sqrt(dL**2 + (t * da)**2 + (t * db)**2)
             
-            # --- FUZJA WYNIKÓW ---
-            # just_color - czysta różnica kolorystyczna
             self.just_color = float(np.mean(diff_map) / 255.0)
             
-            # now_value - hybryda: SSIM koryguje wynik koloru
-            # ratio pomaga znormalizować wynik względem zmian strukturalnych
-            ratio = self.just_color / (abs(1 - score) + 1e-6) # +1e-6 zabezpiecza przed dzieleniem przez 0
+            ratio = self.just_color / (abs(1 - score) + 1e-6)
             
             self.now_value = ((self.just_color * (1/ratio)) + abs(1-score)) / 2
 
@@ -69,7 +57,6 @@ class Field:
             self.just_color = 0.0
             self.diff_img = None
 
-        # Aktualizacja poprzedniej klatki
         self.prev_img = self.img.copy() if self.img is not None else None
 
     def getChessNotation(self):
@@ -134,23 +121,14 @@ def findTwoBiggest(board):
     return [(first[1], first[2]), (second[1], second[2])], avg_field_value
 
 def checkForCastle(game_board, board_matrix, avg_val):
-    # Prosta heurystyka sprawdzająca roszadę na podstawie zmian na polach tranzytowych
-    # Wartość 0.7*avg to próg eksperymentalny
-    
-    # Sprawdzamy czy ewentualne pola roszady są puste w logice gry
-    # Białe Długa (c1, d1 puste)
     if not game_board.piece_at(chess.parse_square('b1')) and \
        not game_board.piece_at(chess.parse_square('c1')) and \
        not game_board.piece_at(chess.parse_square('d1')):
-        # Sprawdzamy zmianę wizualną na c1 (indeks [0][2]) i d1 (indeks [0][3])
-        # Uwaga: indeksy board_matrix[y][x] vs szachowe
-        # Zakładam że board_matrix[row][col] -> row 0 to linia 1
+
         c1_val = board_matrix[0][2].now_value
         d1_val = board_matrix[0][3].now_value
         if c1_val + d1_val / 2 >= 0.7 * avg_val:
-            return 2 # Long castle
-
-    # Białe Krótka (f1, g1 puste)
+            return 2 
     if not game_board.piece_at(chess.parse_square('f1')) and \
        not game_board.piece_at(chess.parse_square('g1')):
         f1_val = board_matrix[0][5].now_value
@@ -168,14 +146,12 @@ def whatMoveWasMade(f1, f2, board, castle):
     if castle == 1: return "e1g1"
     if castle == 2: return "e1c1"
     
-    # Standardowe wykrywanie: jeśli na polu startowym jest figura tego gracza -> to jest from
     if p1:
         if board.turn == chess.WHITE:
             return f1_not + f2_not if str(p1).isupper() else f2_not + f1_not
         else:
             return f1_not + f2_not if str(p1).islower() else f2_not + f1_not
     else:
-        # Fallback
         return f2_not + f1_not
 
 def plot_debug_graphs(board):
@@ -185,14 +161,11 @@ def plot_debug_graphs(board):
 
     for x, row in enumerate(board):
         for y, field in enumerate(row):
-            # Zamiana indeksów [y, x] aby pasowało do wizualizacji plt.imshow
-            # (zależy od orientacji kamery, tutaj zakładam standard)
             matrix_now_value[y, x] = field.now_value
             matrix_just_color[y, x] = field.just_color
 
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
-    # Wykres 1: Hybryda
     im1 = axes[0].imshow(matrix_now_value, cmap='viridis', vmin=0, vmax=1)
     axes[0].set_title('NOW_VALUE (Color + SSIM)')
     fig.colorbar(im1, ax=axes[0])
@@ -200,7 +173,6 @@ def plot_debug_graphs(board):
         for j in range(8):
             axes[0].text(j, i, f"{matrix_now_value[i, j]:.2f}", ha="center", va="center", color="w", fontsize=7)
 
-    # Wykres 2: Tylko Kolor
     im2 = axes[1].imshow(matrix_just_color, cmap='plasma', vmin=0, vmax=1)
     axes[1].set_title('JUST_COLOR (Lab Diff Only)')
     fig.colorbar(im2, ax=axes[1])
