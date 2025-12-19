@@ -15,11 +15,11 @@ def sendGcode(cmd):
             print("ok")
             return(True)
         elif response.startswith("error"):
-            print(f"❌ {cmd} -> {response}")
+            print(f"error {cmd} -> {response}")
             break
         else:
             if len(response)>1:
-                print(f"↪ {response}")
+                print(f"{response}")
                 break
 
 def chessNotationToMatrix(field):

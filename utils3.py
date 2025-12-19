@@ -155,7 +155,6 @@ def whatMoveWasMade(f1, f2, board, castle):
         return f2_not + f1_not
 
 def plot_debug_graphs(board):
-    """Generuje wykresy (Heatmapy) dla diagnostyki."""
     matrix_now_value = np.zeros((8, 8))
     matrix_just_color = np.zeros((8, 8))
 
